@@ -1,11 +1,15 @@
 import express from 'express';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
+import characterRoutes from './routes/characterRoutes';
 
 dotenv.config();
 
 const app = express();
 app.use(express.json());
+
+// routing
+app.use('/api', characterRoutes);
 
 const PORT = process.env.PORT || 5000;
 
