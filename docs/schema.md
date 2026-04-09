@@ -1,52 +1,59 @@
-# Muminkopedia – Schema Dokumentacja
+# 🌲 Muminkopedia API – Dokumentacja Architektury i Schematów Danych
 
-Dokumentacja modeli **Character** i **Artifact** dla API Muminkopedia
+Ten dokument stanowi centralne źródło prawdy dla architektury danych oraz kontraktów API Projektu "Muminkopedia", realizowanego dla Biura Ewidencji i Archiwizacji Doliny Muminków.
 
----
+## 1. Modele Mongoose
 
-## 1. Model Character
+### Model Postaci (`Character`)
+Przechowuje informacje o mieszkańcach Doliny Muminków.
 
-| Pole         | Typ       | Opis                                    | Wymagane  |
-|--------------|----------|------------------------------------------|-----------|
-| name         | string   | Imię postaci                             | ✅         |
-| description  | string   | Krótki opis                              | ✅         |
-| species      | string   | Gatunek (np. Muminek, Miukk, Paszczak)   | ✅         |
-| isSleeping   | boolean  | Czy postać śpi snem zimowym?             | ✅         |
-| bestFriend   | ObjectId | Referencja do innej postaci (opcjonalnie) | ❌         |
+| Pole | Typ Danych Mongoose | Opis | Walidacja |
+| :--- | :--- | :--- | :--- |
+| `name` | `String` | Imię postaci | Wymagane (`required: true`), unikalne, brak pustych znaków. |
+| `description` | `String` | Krótki opis postaci | Wymagane. |
+| `species` | `String` | Gatunek (np. Muminek, Miukk, Paszczak) | Wymagane. |
+| `isSleeping` | `Boolean` | Czy postać śpi snem zimowym? | Wymagane. Domyślnie `false`. |
+| `bestFriend` | `ObjectId` | Najlepszy przyjaciel (Relacja) | Opcjonalne. Referencja (ref) do modelu `Character`. |
 
-**Uwagi:**
-- `bestFriend` będzie wskazywać na innego Character.
-- Pole opcjonalne, bo nie każda postać musi mieć najlepszego przyjaciela.
+### Model Artefaktu (`Artifact`)
+Przechowuje informacje o magicznych przedmiotach i artefaktach.
 
----
-
-## 2. Model Artifact
-
-| Pole        | Typ       | Opis                                   | Wymagane |
-|-------------|----------|----------------------------------------|-----------|
-| name        | string   | Nazwa artefaktu                        | ✅        |
-| description | string   | Opis właściwości                       | ✅        |
-| owner       | ObjectId | ID właściciela (Character)             | ✅        |
-
-**Uwagi:**
-- Każdy artefakt należy do jednej postaci (`owner`).
-- W przyszłości po usunięciu postaci należy obsłużyć artefakty (np. przypisać do `null` lub usunąć).
+| Pole | Typ Danych Mongoose | Opis | Walidacja |
+| :--- | :--- | :--- | :--- |
+| `name` | `String` | Nazwa artefaktu | Wymagane. |
+| `description` | `String` | Opis właściwości przedmiotu | Wymagane. |
+| `owner` | `ObjectId` | Właściciel przedmiotu | Wymagane. Referencja (ref) do modelu `Character`. |
 
 ---
 
-## 3. Relacje
+## 2. Plan Relacji i Logika Biznesowa (Dylemat Paszczaka)
 
-- `Character.bestFriend → Character` (opcjonalne)
-- `Artifact.owner → Character` (wymagane)
+### Typ Relacji:
+Pole `owner` w modelu `Artifact` **musi być magicznym `ObjectId`** (Referencją Mongoose do `Character`), a nie zwykłym tekstem. Pozwala to na:
+1. Pobieranie danych (Populate) – łatwe dołączenie pełnych informacji o właścicielu do zapytania o artefakt.
+2. Utrzymanie spójności danych – właściciel musi faktycznie istnieć w bazie (walidacja na poziomie Serwisu/Repozytorium).
+
+### Dylemat Paszczaka - Cykl Życia Artefaktu (On Delete Cascade):
+Jeśli postać (właściciel) zostaje usunięta (np. wyjeżdża z Doliny), artefakty z nią powiązane wymagają odpowiedniego obsłużenia.
+**Rozwiązanie:** W warstwie `CharacterService` (podczas usuwania Postaci) wprowadzona zostanie logika, która usuwa wszystkie artefakty należące do tej postaci (tzw. "zabiera je ze sobą").
+Dodatkowo: Usunięcie postaci musi wyczyścić pole `bestFriend` u innych postaci, dla których usuwana postać była najlepszym przyjacielem.
 
 ---
 
-## 4. Plan endpointów
+## 3. Plan Endpointów (Kontrakty API)
 
-### Characters
-- `POST /api/characters` – dodaj nową postać
-- `GET /api/characters` – pobierz wszystkie postaci
+Wszystkie odpowiedzi będą zwracane w standardowym formacie JSON z obsługą błędów odpowiednią dla przyszłego frontendu w React.
 
-### Artifacts
-- `POST /api/artifacts` – dodaj nowy artefakt
-- `GET /api/artifacts` – pobierz wszystkie artefakty
+### Postaci (`/api/characters`)
+- `GET /api/characters` – Pobiera listę wszystkich postaci.
+- `GET /api/characters/:id` – Pobiera szczegóły konkretnej postaci (z rozwiązanym referencyjnie `bestFriend`).
+- `POST /api/characters` – Rejestruje nową postać.
+- `PUT /api/characters/:id` – Aktualizuje dane postaci (np. zmianę `isSleeping`).
+- `DELETE /api/characters/:id` – Usuwa postać (oraz jej kaskadowe zależności).
+
+### Artefakty (`/api/artifacts`)
+- `GET /api/artifacts` – Pobiera listę artefaktów (z informacją o właścicielach).
+- `GET /api/artifacts/:id` – Pobiera szczegóły artefaktu.
+- `POST /api/artifacts` – Rejestruje nowy artefakt i przypisuje do właściciela.
+- `PUT /api/artifacts/:id` – Aktualizuje dane artefaktu.
+- `DELETE /api/artifacts/:id` – Niszczy artefakt.
